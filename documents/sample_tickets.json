@@ -1,0 +1,51 @@
+
+[
+  {
+    "ticket_id": "T-1001",
+    "subject": "Charged twice for subscription",
+    "message": "I was charged twice for my monthly subscription. Can you refund the duplicate payment?",
+    "customer_tier": "standard"
+  },
+  {
+    "ticket_id": "T-1002",
+    "subject": "API returns 401 Unauthorized",
+    "message": "My API requests return 401 Unauthorized even though I included my API key.",
+    "customer_tier": "standard"
+  },
+  {
+    "ticket_id": "T-1003",
+    "subject": "Need PDF invoices",
+    "message": "We are an enterprise customer and need to download PDF invoices for our accounting team.",
+    "customer_tier": "enterprise"
+  },
+  {
+    "ticket_id": "T-1004",
+    "subject": "GDPR complaint",
+    "message": "Our lawyer is contacting you regarding a GDPR complaint and a possible violation of our data rights.",
+    "customer_tier": "standard"
+  },
+  {
+    "ticket_id": "T-1005",
+    "subject": "Production outage",
+    "message": "Our production system is down. This is unacceptable and we need immediate help!",
+    "customer_tier": "standard"
+  },
+  {
+    "ticket_id": "T-1006",
+    "subject": "Password reset email missing",
+    "message": "I requested a password reset but the email never arrived. How can I regain access?",
+    "customer_tier": "standard"
+  },
+  {
+    "ticket_id": "T-1007",
+    "subject": "App crashes repeatedly",
+    "message": "The app keeps crashing and I am very unhappy with this experience. Please help.",
+    "customer_tier": "standard"
+  },
+  {
+    "ticket_id": "T-1008",
+    "subject": "Thank you",
+    "message": "Thanks for your help. Everything is working perfectly now!",
+    "customer_tier": "standard"
+  }
+]

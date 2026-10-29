@@ -1,0 +1,44 @@
+[
+    {
+        "article_id": "KB-101",
+        "category": "billing",
+        "title": "How refunds work",
+        "content": "Refunds for duplicate or incorrect charges are issued within 5-7 business days to the original payment method."
+    },
+    {
+        "article_id": "KB-102",
+        "category": "billing",
+        "title": "Downloading invoices",
+        "content": "Invoices are available under Settings > Billing > Invoices and can be exported as PDF."
+    },
+    {
+        "article_id": "KB-201",
+        "category": "technical",
+        "title": "Fixing API 401/403 errors",
+        "content": "Regenerate your API key under Settings > Developer and send it in the Authorization header."
+    },
+    {
+        "article_id": "KB-202",
+        "category": "technical",
+        "title": "App crashes on startup",
+        "content": "Clear the app cache and update to the latest version. If it still crashes, send us the crash log."
+    },
+    {
+        "article_id": "KB-203",
+        "category": "technical",
+        "title": "Export jobs timing out",
+        "content": "Exports over 1M rows run asynchronously; you will receive an email with a download link."
+    },
+    {
+        "article_id": "KB-301",
+        "category": "account",
+        "title": "Resetting your password",
+        "content": "Use Forgot password on the login page. Reset links expire after 30 minutes."
+    },
+    {
+        "article_id": "KB-302",
+        "category": "account",
+        "title": "Setting up two-factor authentication",
+        "content": "Enable 2FA under Settings > Security. Backup codes can be regenerated there too."
+    }
+]
