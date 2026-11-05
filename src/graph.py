@@ -1,108 +1,99 @@
+import traceback
 
-from langgraph.graph import StateGraph, START, END
-
-from langgraph.checkpoint.memory import MemorySaver
-
-from src.state import TicketState
-from src.nodes import (
-    classify,
-    retrieve_kb,
-    draft_reply,
-    review_draft,
-    human_review,
-    send_reply,
-    escalate,
+from src.databases import (
+    create_ticket,
+    generate_ticket_id,
+    save_ticket_result,
+    get_ticket_details,
 )
 
-
-MAX_DRAFTS = 3
-
-
-def route_after_classify(state: TicketState) -> str:
-    """Route high-risk tickets directly to escalation."""
-    if state.get("category") == "legal":
-        return "escalate"
-
-    if (
-        state.get("priority") == "urgent"
-        and state.get("sentiment") == "negative"
-    ):
-        return "escalate"
-
-    return "retrieve_kb"
+from src.nodes import process_one
+from src.config import get_mock_data
 
 
-def route_after_review(state: TicketState) -> str:
-    if not state.get("review_passed", False):
-        if state.get("draft_count", 0) < MAX_DRAFTS:
-            return "draft_reply"
-        return "escalate"
+def process_ticket(customer_id, subject, ticket_text):
 
-    if (
-        state.get("priority") in ["high", "urgent"]
-        or state.get("customer_tier") == "enterprise"
-    ):
-        return "human_review"
+    ticket_id = generate_ticket_id()
 
-    return "send_reply"
-
-
-def route_after_human_review(state: TicketState) -> str:
-    decision = state.get("human_decision", {})
-    action = decision.get("action", "").lower()
-
-    if action in ["approve", "approve_with_edit"]:
-        return "send_reply"
-
-    return "escalate"
-
-
-def build_graph():
-    builder = StateGraph(TicketState)
-
-    builder.add_node("classify", classify)
-    builder.add_node("retrieve_kb", retrieve_kb)
-    builder.add_node("draft_reply", draft_reply)
-    builder.add_node("review_draft", review_draft)
-    builder.add_node("send_reply", send_reply)
-    builder.add_node("escalate", escalate)
-    builder.add_node("human_review", human_review)
-
-    builder.add_edge(START, "classify")
-
-    builder.add_conditional_edges(
-        "classify",
-        route_after_classify,
-        {
-            "escalate": "escalate",
-            "retrieve_kb": "retrieve_kb",
-        },
+    create_ticket(
+        ticket_id=ticket_id,
+        customer_id=customer_id,
+        subject=subject,
+        ticket_text=ticket_text,
     )
 
-    builder.add_edge("retrieve_kb", "draft_reply")
-    builder.add_edge("draft_reply", "review_draft")
+    ticket = {
+        "ticket_id": ticket_id,
+        "customer_id": customer_id,
+        "ticket_text": ticket_text,
+    }
 
-    builder.add_conditional_edges(
-        "review_draft",
-        route_after_review,
-        {
-            "draft_reply": "draft_reply",
-            "escalate": "escalate",
-            "human_review": "human_review",
-            "send_reply": "send_reply",
-        },
-    )
-    builder.add_conditional_edges(
-        "human_review",
-        route_after_human_review,
-        {
-            "send_reply": "send_reply",
-            "escalate": "escalate",
-        },
-    )
-    
-    builder.add_edge("send_reply", END)
-    builder.add_edge("escalate", END)
+    result = process_one(ticket, subject)
 
-    return builder.compile(checkpointer=MemorySaver())
-    #return builder.compile()
+    save_ticket_result(result)
+
+    return result
+
+
+def process_mock_tickets():
+
+    results = []
+
+    mock_data = get_mock_data()
+
+    for ticket in mock_data.get("tickets", []):
+
+        try:
+
+            ticket_id = ticket["ticket_id"]
+
+            # Avoid processing the same mock ticket twice.
+            existing = get_ticket_details(ticket_id)
+
+            if existing:
+                results.append({
+                    "ticket_id": ticket_id,
+                    "customer_id": ticket["customer_id"],
+                    "category": existing.get("category"),
+                    "priority": existing.get("priority"),
+                    "sentiment": existing.get("sentiment"),
+                    "outcome": existing.get("outcome"),
+                    "escalation_reason": existing.get(
+                        "escalation_reason"
+                    ),
+                    "skipped": "already processed",
+                })
+
+                continue
+
+            create_ticket(
+                ticket_id=ticket_id,
+                customer_id=ticket["customer_id"],
+                subject=ticket.get(
+                    "subject",
+                    "Mock support request",
+                ),
+                ticket_text=ticket["ticket_text"],
+                task=ticket.get("task", "mock"),
+                ticket_date=ticket.get("date"),
+            )
+
+            result = process_one(ticket)
+
+            save_ticket_result(result)
+
+            results.append(result)
+
+        except Exception:
+            print(
+                f"BATCH ERROR for {ticket.get('ticket_id')}:"
+            )
+            traceback.print_exc()
+
+            results.append({
+                "ticket_id": ticket.get("ticket_id"),
+                "outcome": "error",
+                "escalation_reason": "processing error",
+            })
+
+    return results

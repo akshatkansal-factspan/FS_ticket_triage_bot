@@ -7,3 +7,12 @@ streamlit
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+psycopg[binary,pool]
+
+langgraph-checkpoint-postgres
+langchain
+psycopg2-binary
+fastapi
+uvicorn
+requests
+pytest

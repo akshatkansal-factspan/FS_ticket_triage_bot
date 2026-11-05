@@ -6,3 +6,4 @@ __pycache__/
 .streamlit/secrets.toml
 testing_files/
 src/*.egg-info/
+other_files/

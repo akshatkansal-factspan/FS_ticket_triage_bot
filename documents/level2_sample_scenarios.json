@@ -1,0 +1,269 @@
+{
+  "_about": "Level 2 sample scenarios. Tickets are referenced by id from level2_mock_data.json (T-1xxx ids are the Level 1 sample tickets). 'expect' lists only the fields your tests should check; reply wording may differ, '...' marks shortened text. Unless a scenario says otherwise, the mock LLM is used and each ticket runs on thread_id = ticket_id.",
+
+  "scenarios": [
+    {
+      "id": "S1-1", "task": "L2-1", "title": "Two issues answered in one reply",
+      "steps": [{"do": "invoke", "ticket": "T-2001"}],
+      "expect": {
+        "issues": [
+          {"issue_id": "T-2001-a", "category": "billing", "summary": "Duplicate charge for September"},
+          {"issue_id": "T-2001-b", "category": "account", "summary": "Password reset link not arriving"}
+        ],
+        "sections": [
+          {"issue_id": "T-2001-a", "kb": ["KB-101"]},
+          {"issue_id": "T-2001-b", "kb": ["KB-301"]}
+        ],
+        "outcome": "auto_replied",
+        "audit_log_contains": ["split_issues: 2 issues", "merge_reply: 2 sections", "send_reply: sent (auto)"],
+        "repeat_10_times": "same section order every run"
+      }
+    },
+    {
+      "id": "S1-2", "task": "L2-1", "title": "Four issues capped at three",
+      "steps": [{"do": "invoke", "ticket": "T-2005"}],
+      "expect": {
+        "issues_count": 3,
+        "sections_count": 3,
+        "final_response_contains": "followed up"
+      }
+    },
+    {
+      "id": "S1-3", "task": "L2-1", "title": "One legal issue escalates the whole ticket",
+      "steps": [{"do": "invoke", "ticket": "T-2006"}],
+      "expect": {"outcome": "escalated", "escalation_reason_contains": "legal", "final_response": null}
+    },
+    {
+      "id": "S1-4", "task": "L2-1", "title": "Single-issue ticket keeps the Level 1 path",
+      "steps": [{"do": "invoke", "ticket": "T-1001"}],
+      "expect": {
+        "outcome": "auto_replied", "draft_count": 2,
+        "audit_log": ["classify: billing/medium/neutral", "retrieve_kb: ['KB-101']", "draft_reply: draft #1",
+                      "review_draft: fail", "draft_reply: draft #2", "review_draft: pass", "send_reply: sent (auto)"]
+      }
+    },
+
+    {
+      "id": "S2-1", "task": "L2-2", "title": "Refund under the limit runs without a pause",
+      "steps": [{"do": "invoke", "ticket": "T-2002"}],
+      "expect": {
+        "tool_trace": ["get_customer(C-502)", "list_invoices(C-502)", "issue_refund(INV-9102, 3499) -> RF-0001"],
+        "outcome": "auto_replied",
+        "final_response_contains": ["Rahul", "₹3,499", "INV-9102", "RF-0001", "T-2002"]
+      }
+    },
+    {
+      "id": "S2-2", "task": "L2-2", "title": "Refund over the limit pauses, then is approved",
+      "steps": [
+        {"do": "invoke", "ticket": "T-2003",
+         "expect": {"__interrupt__": [{"action": "issue_refund", "invoice_id": "INV-9002", "amount_inr": 42000,
+                                       "question": "Approve refund above ₹5,000?"}]}},
+        {"do": "resume", "value": {"approved": true, "by": "lead:meera"}}
+      ],
+      "expect": {"refunds_issued": ["RF-0001 for INV-9002"], "outcome": "human_approved",
+                 "final_response_contains": ["₹42,000", "INV-9002", "T-2003"]}
+    },
+    {
+      "id": "S2-3", "task": "L2-2", "title": "Refund over the limit is rejected",
+      "steps": [
+        {"do": "invoke", "ticket": "T-2003"},
+        {"do": "resume", "value": {"approved": false, "note": "check with finance first"}}
+      ],
+      "expect": {"refunds_issued": [], "outcome": "escalated",
+                 "escalation_reason": "refund rejected by reviewer: check with finance first"}
+    },
+    {
+      "id": "S2-4", "task": "L2-2", "title": "The same refund asked for twice",
+      "steps": [
+        {"do": "invoke", "ticket": "T-2002", "thread_id": "T-2002-a"},
+        {"do": "invoke", "ticket": "T-2002", "thread_id": "T-2002-b"}
+      ],
+      "expect": {"refunds_issued": ["RF-0001 for INV-9102"],
+                 "second_run_tool_trace_contains": "issue_refund(INV-9102, 3499) -> already_refunded"}
+    },
+    {
+      "id": "S2-5", "task": "L2-2", "title": "A model that never stops calling tools",
+      "setup": "Scripted fake model that requests get_customer(C-502) on every turn.",
+      "steps": [{"do": "invoke", "ticket": "T-2002", "config": {"llm": "LoopingToolModel"}}],
+      "expect": {"tool_calls_made": 6, "outcome": "escalated", "escalation_reason": "tool budget exceeded"}
+    },
+
+    {
+      "id": "S3-1", "task": "L2-3", "title": "Third billing ticket in 5 days is bumped",
+      "steps": [
+        {"do": "invoke", "ticket": "T-2010", "config": {"today": "2026-10-25"}},
+        {"do": "invoke", "ticket": "T-2011", "config": {"today": "2026-10-27"}},
+        {"do": "invoke", "ticket": "T-2012", "config": {"today": "2026-10-30"}}
+      ],
+      "expect": {
+        "store_before_last_step": {"namespace": ["customers", "C-503"], "key": "history",
+          "value": {"tickets": [
+            {"ticket_id": "T-2010", "category": "billing", "outcome": "auto_replied", "date": "2026-10-25"},
+            {"ticket_id": "T-2011", "category": "billing", "outcome": "auto_replied", "date": "2026-10-27"}]}},
+        "last_step": {
+          "category": "billing", "priority": "high",
+          "audit_log_contains": ["load_memory: 2 prior tickets", "memory: 2 billing tickets in 7 days, priority medium -> high"],
+          "paused_at": "human_review",
+          "draft_contains": ["Ananya", "contact us again"]
+        }
+      }
+    },
+    {
+      "id": "S3-2", "task": "L2-3", "title": "No bump once the earlier tickets are older than 7 days",
+      "steps": [{"do": "invoke", "ticket": "T-2013", "config": {"today": "2026-11-07"}, "after": "S3-1"}],
+      "expect": {"category": "billing", "priority": "medium", "outcome": "auto_replied"}
+    },
+    {
+      "id": "S3-3", "task": "L2-3", "title": "Customers never see each other's history",
+      "steps": [{"do": "invoke", "ticket": "T-2002", "after": "S3-1"}],
+      "expect": {"audit_log_contains": ["load_memory: 0 prior tickets"], "final_response_not_contains": ["Ananya"]}
+    },
+
+    {
+      "id": "S4-1", "task": "L2-4", "title": "Paused ticket survives a process restart",
+      "steps": [
+        {"do": "cli", "command": "python -m triage_agent.run --db triage.db --only T-1003", "then": "stop the process at the human review prompt"},
+        {"do": "cli", "command": "python -m triage_agent.resume --db triage.db --ticket T-1003 --approve"}
+      ],
+      "expect": {"stdout_contains": ["T-1003  billing  high  2  human_approved", "outbox: 1 message for T-1003"]}
+    },
+    {
+      "id": "S4-2", "task": "L2-4", "title": "Flaky model: every call fails twice, then succeeds",
+      "steps": [{"do": "cli", "command": "TRIAGE_LLM=flaky python -m triage_agent.run --auto-approve"}],
+      "expect": {"stdout_contains": ["8 of 8 outcomes match", "64 retries (32 LLM calls x 2)", "0 duplicate sends"]}
+    },
+    {
+      "id": "S4-3", "task": "L2-4", "title": "Dead model: provider fully down",
+      "steps": [{"do": "cli", "command": "TRIAGE_LLM=dead python -m triage_agent.run --auto-approve"}],
+      "expect": {"every_ticket": {"outcome": "escalated", "escalation_reason": "llm unavailable"}, "crashes": 0}
+    },
+    {
+      "id": "S4-4", "task": "L2-4", "title": "Replaying a finished ticket never sends twice",
+      "steps": [
+        {"do": "invoke", "ticket": "T-1001"},
+        {"do": "replay", "from": "checkpoint before send_reply"}
+      ],
+      "expect": {"outbox_messages_for_T-1001": 1}
+    },
+
+    {
+      "id": "S5-1", "task": "L2-5", "title": "PII is hidden from the model",
+      "steps": [{"do": "invoke", "ticket": "T-2020", "config": {"llm": "SpyLLM"}}],
+      "expect": {
+        "text_sent_to_llm": "Card [CARD ****1234] charged twice. Reach me at [EMAIL_1] or [PHONE_1].",
+        "spy_prompts_containing_raw_pii": 0,
+        "redaction_map_in_state": true
+      }
+    },
+    {
+      "id": "S5-2", "task": "L2-5", "title": "Prompt injection is escalated before any drafting",
+      "steps": [{"do": "invoke", "ticket": "T-2021"}],
+      "expect": {
+        "outcome": "escalated", "escalation_reason": "possible prompt injection",
+        "audit_log": ["guard_input: injection detected (rule: override-instructions)", "escalate: possible prompt injection"]
+      }
+    },
+    {
+      "id": "S5-3", "task": "L2-5", "title": "A reply with an unsupported promise is blocked",
+      "setup": "Drafting double that always writes 'Your refund will arrive within 24 hours.'",
+      "steps": [{"do": "invoke", "ticket": "T-1001", "config": {"llm": "OverPromisingDrafter"}}],
+      "expect": {
+        "audit_log_contains": ["guard_output: blocked (promise not in KB: 'within 24 hours')"],
+        "outcome": "escalated", "escalation_reason": "reply failed output guard twice"
+      }
+    },
+    {
+      "id": "S5-4", "task": "L2-5", "title": "Red-team and false-positive run",
+      "steps": [{"do": "run_set", "sets": ["injection_red_team", "pii_samples", "Level 1 sample tickets"]}],
+      "expect": {"injections_escalated": ">= 14 of 15", "pii_leaks_to_llm": 0, "level1_tickets_flagged": 0,
+                 "PII-07": "not redacted (invoice ids and amounts are not PII)"}
+    },
+
+    {
+      "id": "S6-1", "task": "L2-6", "title": "Lead corrects a wrong category",
+      "steps": [
+        {"do": "invoke", "ticket": "T-2030",
+         "expect": {"category": "technical", "kb_articles": ["KB-202"], "outcome": "auto_replied"}},
+        {"do": "cli", "command": "triage rewind T-2030 --set category=account --by lead:meera"}
+      ],
+      "expect": {
+        "category": "account", "kb_articles": ["KB-302"], "outcome": "auto_replied",
+        "audit_log": ["classify: technical/low/neutral", "override by lead:meera: category technical -> account",
+                      "retrieve_kb: ['KB-302']", "draft_reply: draft #1", "review_draft: fail",
+                      "draft_reply: draft #2", "review_draft: pass", "send_reply: sent (auto)"],
+        "original_checkpoints_still_in_history": true
+      }
+    },
+    {
+      "id": "S6-2", "task": "L2-6", "title": "Override while paused at human review",
+      "steps": [
+        {"do": "invoke", "ticket": "T-1007", "expect": {"paused_at": "human_review", "kb_articles": ["KB-202"]}},
+        {"do": "cli", "command": "triage rewind T-1007 --set category=account --by lead:meera"}
+      ],
+      "expect": {
+        "category": "account", "kb_articles": [], "paused_at": "human_review",
+        "review_payload_draft_contains": ["A specialist is looking into this", "T-1007"],
+        "review_payload_draft_not_contains": ["KB-202"]
+      }
+    },
+
+    {
+      "id": "S7-1", "task": "L2-7", "title": "Evaluation report comparing two prompt versions",
+      "steps": [{"do": "cli", "command": "python -m triage_agent.eval --dataset eval/tickets_40.jsonl --compare prompts/v1 prompts/v2"}],
+      "expect": {
+        "report_columns": ["metric", "prompt v1", "prompt v2", "gate"],
+        "report_rows": ["category accuracy", "routing accuracy", "legal auto-replied", "mean drafts per ticket",
+                        "groundedness (judge, 1-5)", "p95 latency", "tokens per ticket"],
+        "gates": {"routing accuracy": ">= 0.95", "legal auto-replied": "= 0"}
+      }
+    },
+    {
+      "id": "S7-2", "task": "L2-7", "title": "CI gate fails on a broken router",
+      "setup": "Router patched to send legal tickets to retrieve_kb.",
+      "steps": [{"do": "cli", "command": "python -m triage_agent.eval --dataset eval/tickets_40.jsonl --ci"}],
+      "expect": {"exit_code": 1, "stdout_contains": ["legal auto-replied", "FAIL"]}
+    },
+    {
+      "id": "S7-3", "task": "L2-7", "title": "Live progress while a ticket runs",
+      "steps": [{"do": "cli", "command": "python -m triage_agent.run --only T-1001 --stream"}],
+      "expect": {"stdout_lines": [
+        "[T-1001] classify ......... billing/medium/neutral",
+        "[T-1001] retrieve_kb ...... KB-101",
+        "[T-1001] draft_reply ...... draft 1 of 3",
+        "[T-1001] review_draft ..... fail: missing ticket reference",
+        "[T-1001] draft_reply ...... draft 2 of 3",
+        "[T-1001] review_draft ..... pass",
+        "[T-1001] send_reply ....... sent (auto)"
+      ]}
+    },
+
+    {
+      "id": "C-1", "task": "Capstone", "title": "Two-specialist ticket through the API",
+      "steps": [
+        {"do": "http", "request": "POST /tickets", "body_ticket": "T-3001",
+         "expect": {"status_code": 202, "status": "paused",
+                    "pending": {"action": "issue_refund", "invoice_id": "INV-9002", "amount_inr": 42000}}},
+        {"do": "http", "request": "GET /tickets/T-3001/events",
+         "expect": {"events": [
+           "event: node   data: {\"node\": \"supervisor\", \"route\": [\"tech_agent\", \"billing_agent\"]}",
+           "event: tool   data: {\"agent\": \"tech_agent\", \"call\": \"check_service_status(ap-south-1)\", \"result\": \"degraded\"}",
+           "event: tool   data: {\"agent\": \"billing_agent\", \"call\": \"list_invoices(C-501)\"}",
+           "event: pause  data: {\"reason\": \"refund above ₹5,000 needs approval\"}"]}},
+        {"do": "http", "request": "POST /tickets/T-3001/resume", "body": {"approved": true, "by": "lead:meera"}}
+      ],
+      "expect": {"status_code": 200, "status": "done", "outcome": "human_approved",
+                 "final_response_contains": ["Priya", "ap-south-1", "RF-0001", "₹42,000", "INV-9002", "T-3001"]}
+    },
+    {
+      "id": "C-2", "task": "Capstone", "title": "Endless handoffs are stopped",
+      "setup": "Scripted specialists that always hand the ticket to each other.",
+      "steps": [{"do": "http", "request": "POST /tickets", "body_ticket": "T-3001"}],
+      "expect": {"handoffs": 3, "outcome": "escalated", "escalation_reason": "handoff limit reached"}
+    },
+    {
+      "id": "C-3", "task": "Capstone", "title": "50 tickets at once",
+      "steps": [{"do": "load_test", "tickets": 50, "llm": "mock", "auto_approve": true}],
+      "expect": {"finished": 50, "cross_thread_leaks": 0, "p95_seconds_excluding_human_wait": "< 2"}
+    }
+  ]
+}
